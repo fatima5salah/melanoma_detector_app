@@ -35,7 +35,6 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.2
   image_picker: ^1.1.2
-  tflite_flutter: ^0.11.0  # <-- الإصدار الجديد
   image: ^4.2.0   
   google_fonts: ^6.1.0 # أو أحدث إصدار          # <--- أضيفي هذا لمعالجة الصور
   permission_handler: ^11.3.1 # أو أحدث إصدار
