@@ -1,14 +1,12 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart'; // <-- مهم للتحقق من منصة الويب
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:tflite_flutter/tflite_flutter.dart' as tfl;
-import 'package:image/image.dart' as img;
-import 'package:opencv_dart/opencv_dart.dart' as cv;
-import 'package:shared_preferences/shared_preferences.dart'; // <-- استيراد الحزمة الجديدة
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const MelanomaDetectorApp());
@@ -34,7 +32,7 @@ class MelanomaDetectorApp extends StatelessWidget {
   }
 }
 
-// ------------------- الصفحة الرئيسية (معدلة) -------------------
+// ------------------- الصفحة الرئيسية -------------------
 class SplashHomePage extends StatefulWidget {
   const SplashHomePage({super.key});
 
@@ -60,10 +58,8 @@ class _SplashHomePageState extends State<SplashHomePage> with SingleTickerProvid
     super.dispose();
   }
 
-  // --- دالة جديدة للتحقق من التفضيلات والانتقال ---
   Future<void> _navigateToScan() async {
     final prefs = await SharedPreferences.getInstance();
-    // اقرأ القيمة، وإذا لم تكن موجودة (أول مرة)، افترض أنها true
     final bool showInstructions = prefs.getBool('show_instructions') ?? true;
 
     if (!mounted) return;
@@ -100,7 +96,6 @@ class _SplashHomePageState extends State<SplashHomePage> with SingleTickerProvid
                   const SizedBox(height: 16),
                   const Text('كشف مبكر باستخدام الذكاء الاصطناعي', style: TextStyle(color: Colors.white70, fontSize: 18), textAlign: TextAlign.center),
                   const SizedBox(height: 50),
-                  // --- تعديل هنا: استدعاء الدالة الجديدة ---
                   _buildHomePageButton(text: 'ابدأ الفحص', onPressed: _navigateToScan, isPrimary: true),
                   const SizedBox(height: 20),
                   _buildHomePageButton(text: 'معلومات وإرشادات', onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const InfoPage()))),
@@ -131,8 +126,7 @@ class _SplashHomePageState extends State<SplashHomePage> with SingleTickerProvid
   }
 }
 
-// ... (صفحة الفحص DetectionPage تبقى كما هي بدون تغيير)
-// ------------------- صفحة الفحص (بدون تغيير) -------------------
+// ------------------- صفحة الفحص (نسخة الويب التجريبية) -------------------
 class DetectionPage extends StatefulWidget {
   const DetectionPage({super.key});
 
@@ -143,25 +137,14 @@ class DetectionPage extends StatefulWidget {
 class _DetectionPageState extends State<DetectionPage> {
   File? _imageFile;
   final ImagePicker _picker = ImagePicker();
-  tfl.Interpreter? _interpreter;
-  List<String>? _labels;
   String? _predictionResult;
   double? _confidence;
   bool? _isPredictionMalignant;
   bool _isLoading = false;
   bool _isPickerActive = false; 
 
-  @override
-  void initState() {
-    super.initState();
-    _loadModel();
-  }
-
-  @override
-  void dispose() {
-    _interpreter?.close();
-    super.dispose();
-  }
+  // تم حذف initState و dispose لأنهما لم يعودا ضروريين في نسخة الويب
+  // بعد إزالة النموذج (Interpreter).
 
   void _showErrorDialog(String message) {
     if (!mounted) return;
@@ -186,124 +169,79 @@ class _DetectionPageState extends State<DetectionPage> {
     );
   }
 
-  Future<void> _loadModel() async {
-    try {
-      final labelsData = await rootBundle.loadString('assets/labels.txt');
-      _labels = labelsData.split('\n').where((label) => label.isNotEmpty).toList();
-      _interpreter = await tfl.Interpreter.fromAsset('assets/model.tflite');
-    } catch (e) {
-      _showErrorDialog('فشل في تحميل نموذج الذكاء الاصطناعي.');
-    }
-  }
+  // هذه الدالة تم إزالتها لأننا لا نقوم بمعالجة متقدمة في نسخة الويب
+  // Future<Uint8List> _preprocessImage(File imageFile) async { ... }
 
-  Future<Uint8List> _preprocessImage(File imageFile) async {
-    final imageBytes = await imageFile.readAsBytes();
-    final mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
-    final gray = cv.cvtColor(mat, cv.COLOR_BGR2GRAY);
-    final kernel = cv.getStructuringElement(cv.MORPH_RECT, (17, 17));
-    final blackhat = cv.morphologyEx(gray, cv.MORPH_BLACKHAT, kernel);
-    final thresholdResult = cv.threshold(blackhat, 10, 255, cv.THRESH_BINARY);
-    final th = thresholdResult.$2; 
-    final hairRemoved = cv.inpaint(mat, th, 3, cv.INPAINT_NS);
-    final lab = cv.cvtColor(hairRemoved, cv.COLOR_BGR2Lab);
-    final labPlanes = cv.split(lab); 
-    final clahe = cv.createCLAHE(clipLimit: 2.0, tileGridSize: (8, 8));
-    final cl = clahe.apply(labPlanes[0]);
-    final contrastedLab = cv.merge(cv.VecMat.fromList([cl, labPlanes[1], labPlanes[2]]));
-    final contrasted = cv.cvtColor(contrastedLab, cv.COLOR_Lab2BGR);
-    final denoised = cv.gaussianBlur(contrasted, (3, 3), 0);
-    final encodeResult = cv.imencode('.png', denoised);
-    return encodeResult.$2;
-  }
-
+  // دالة المحاكاة التي تعطي نتيجة وهمية
   Future<void> _runInference() async {
-    if (_imageFile == null || _interpreter == null || _labels == null) {
-      if (_interpreter == null) _showErrorDialog('لم يتم تحميل النموذج.');
-      return;
-    }
+    if (_imageFile == null) return;
     
     if (!mounted) return;
     setState(() => _isLoading = true);
 
-    try {
-      final processedImageBytes = await _preprocessImage(_imageFile!);
-      img.Image? processedImage = img.decodeImage(processedImageBytes);
-      if (processedImage == null) throw Exception("فشل فك تشفير الصورة.");
-      
-      const int inputSize = 224;
-      img.Image resizedImage = img.copyResize(processedImage, width: inputSize, height: inputSize);
-      var inputBuffer = Float32List(1 * inputSize * inputSize * 3);
-      var bufferIndex = 0;
-      for (var y = 0; y < inputSize; y++) {
-        for (var x = 0; x < inputSize; x++) {
-          var pixel = resizedImage.getPixel(x, y);
-          inputBuffer[bufferIndex++] = pixel.r / 255.0;
-          inputBuffer[bufferIndex++] = pixel.g / 255.0;
-          inputBuffer[bufferIndex++] = pixel.b / 255.0;
+    // --- قسم المحاكاة ---
+    // سننتظر ثانيتين لكي يبدو وكأنه يقوم بالتحليل
+    await Future.delayed(const Duration(seconds: 2));
+
+    // سنقوم بتوليد نتيجة عشوائية في كل مرة
+    final isMalignant = (DateTime.now().second % 2) == 0;
+    final confidence = 0.85 + (DateTime.now().millisecond % 10) / 100.0; // رقم بين 85% و 95%
+
+    if(mounted) {
+      setState(() {
+        if (isMalignant) {
+          _predictionResult = "خبيث";
+          _confidence = confidence;
+          _isPredictionMalignant = true;
+        } else {
+          _predictionResult = "حميد";
+          _confidence = confidence;
+          _isPredictionMalignant = false;
         }
-      }
-
-      var input = inputBuffer.reshape([1, inputSize, inputSize, 3]);
-      var output = List.filled(1, 0.0).reshape([1, 1]); 
-      _interpreter!.run(input, output);
-      double score = output[0][0];
-
-      if(mounted) {
-        setState(() {
-          if (score > 0.5) {
-            _predictionResult = _labels![1];
-            _confidence = score;
-            _isPredictionMalignant = true;
-          } else {
-            _predictionResult = _labels![0];
-            _confidence = 1 - score;
-            _isPredictionMalignant = false;
-          }
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if(mounted) {
-        setState(() => _isLoading = false);
-        _showErrorDialog('حدث خطأ أثناء تحليل الصورة.');
-      }
+        _isLoading = false;
+      });
     }
   }
 
   Future<void> _pickAndPredict(ImageSource source) async {
     if (_isPickerActive) return;
-    PermissionStatus status = source == ImageSource.camera
-        ? await Permission.camera.request()
-        : await Permission.photos.request();
 
-    if (status.isGranted) {
-      if (!mounted) return;
-      setState(() => _isPickerActive = true);
-      try {
-        final pickedFile = await _picker.pickImage(source: source);
-        if (pickedFile != null) {
-          if (!mounted) return;
-          setState(() {
-            _imageFile = File(pickedFile.path);
-            _predictionResult = null;
-            _confidence = null;
-            _isPredictionMalignant = null;
-          });
-          await _runInference(); 
-        }
-      } finally {
-        if (mounted) { setState(() => _isPickerActive = false); }
+    // على الويب، لا نحتاج إلى طلب أذونات
+    if (!kIsWeb) {
+      PermissionStatus status = source == ImageSource.camera
+          ? await Permission.camera.request()
+          : await Permission.photos.request();
+      if (!status.isGranted) {
+        _showErrorDialog('نحتاج إلى إذن للوصول إلى ${source == ImageSource.camera ? "الكاميرا" : "الصور"}.');
+        if (status.isPermanentlyDenied) openAppSettings();
+        return;
       }
-    } else {
-      _showErrorDialog('نحتاج إلى إذن للوصول إلى ${source == ImageSource.camera ? "الكاميرا" : "الصور"}.');
-      if (status.isPermanentlyDenied) openAppSettings();
+    }
+
+    if (!mounted) return;
+    setState(() => _isPickerActive = true);
+    try {
+      final pickedFile = await _picker.pickImage(source: source);
+      if (pickedFile != null) {
+        if (!mounted) return;
+        setState(() {
+          // على الويب، لا يوجد مسار حقيقي للملف، لذلك نستخدم pickedFile.path
+          _imageFile = File(pickedFile.path);
+          _predictionResult = null;
+          _confidence = null;
+          _isPredictionMalignant = null;
+        });
+        await _runInference(); 
+      }
+    } finally {
+      if (mounted) { setState(() => _isPickerActive = false); }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar( title: const Text('فحص الميلانوما'), backgroundColor: Colors.deepPurple.shade400, ),
+      appBar: AppBar( title: const Text('فحص الميلانوما (نسخة تجريبية)'), backgroundColor: Colors.deepPurple.shade400, ),
       body: Container(
         decoration: BoxDecoration( gradient: LinearGradient( colors: [Colors.deepPurple.shade200, Colors.deepPurple.shade400], begin: Alignment.topCenter, end: Alignment.bottomCenter, ), ),
         child: Center(
@@ -319,7 +257,13 @@ class _DetectionPageState extends State<DetectionPage> {
                     child: Center(
                       child: _imageFile == null
                           ? Column( mainAxisAlignment: MainAxisAlignment.center, children: const [ Icon(Icons.image_search, size: 80, color: Colors.white70), SizedBox(height: 16), Text('اختر صورة للتحليل', style: TextStyle(color: Colors.white, fontSize: 16)), ], )
-                          : ClipRRect( borderRadius: BorderRadius.circular(18), child: Image.file(_imageFile!, fit: BoxFit.cover, width: 310, height: 310), ),
+                          : ClipRRect(
+                              borderRadius: BorderRadius.circular(18),
+                              // تعديل بسيط لعرض الصورة على الويب
+                              child: kIsWeb 
+                                ? Image.network(_imageFile!.path, fit: BoxFit.cover, width: 310, height: 310) 
+                                : Image.file(_imageFile!, fit: BoxFit.cover, width: 310, height: 310),
+                            ),
                     ),
                   ),
                   if (_isLoading)
@@ -332,15 +276,21 @@ class _DetectionPageState extends State<DetectionPage> {
                 const SizedBox(height: 30),
                 Row( mainAxisAlignment: MainAxisAlignment.center, children: [
                   _buildActionButton( icon: Icons.photo_library_outlined, label: 'المعرض', isEnabled: !_isLoading && !_isPickerActive, onPressed: () => _pickAndPredict(ImageSource.gallery), ),
-                  const SizedBox(width: 20),
-                  _buildActionButton( icon: Icons.camera_alt_outlined, label: 'الكاميرا', isEnabled: !_isLoading && !_isPickerActive, onPressed: () => _pickAndPredict(ImageSource.camera), ),
+                  if (!kIsWeb) // الكاميرا لا تعمل بنفس الطريقة على كل المتصفحات، يمكن إخفاؤها في الويب
+                    const SizedBox(width: 20),
+                  if (!kIsWeb)
+                    _buildActionButton( icon: Icons.camera_alt_outlined, label: 'الكاميرا', isEnabled: !_isLoading && !_isPickerActive, onPressed: () => _pickAndPredict(ImageSource.camera), ),
                 ], ),
                 const SizedBox(height: 40),
                 if (_predictionResult != null && _confidence != null && _isPredictionMalignant != null)
                   _buildResultCard(_predictionResult!, _confidence!, _isPredictionMalignant!),
                 
                 const SizedBox(height: 40),
-                const Text( 'إخلاء مسؤولية: هذا مشروع تخرج وليس جهازاً طبياً معتمداً. استشر الطبيب للحصول على أي نصيحة طبية.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.white70), ),
+                const Text(
+                  'إخلاء مسؤولية: هذه نسخة تجريبية للويب والنتائج للتوضيح فقط. استشر الطبيب للحصول على أي نصيحة طبية.', 
+                  textAlign: TextAlign.center, 
+                  style: TextStyle(fontSize: 12, color: Colors.white70),
+                ),
               ],
             ),
           ),
@@ -389,7 +339,7 @@ class _DetectionPageState extends State<DetectionPage> {
   }
 }
 
-// ------------------- صفحة التعليمات (معدلة) -------------------
+// ------------------- صفحة التعليمات -------------------
 class InstructionsPage extends StatefulWidget {
   const InstructionsPage({super.key});
 
@@ -422,7 +372,7 @@ class _InstructionsPageState extends State<InstructionsPage> {
         backgroundColor: Colors.deepPurple.shade400,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 80), // زيادة الحاشية السفلية للزر
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 150), // زيادة الحاشية السفلية للزر
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -445,14 +395,12 @@ class _InstructionsPageState extends State<InstructionsPage> {
           ],
         ),
       ),
-      // --- إضافة الزر والـ Checkbox في الأسفل ---
       bottomSheet: Container(
         padding: const EdgeInsets.all(16).copyWith(bottom: MediaQuery.of(context).padding.bottom + 16),
         color: Theme.of(context).scaffoldBackgroundColor,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // <-- الإضافة الجديدة
             CheckboxListTile(
               title: const Text('عدم إظهار هذه الرسالة مرة أخرى'),
               value: _dontShowAgain,
@@ -519,8 +467,7 @@ class _InstructionsPageState extends State<InstructionsPage> {
   }
 }
 
-// ... (صفحتي AboutPage و InfoPage تبقى كما هي بدون تغيير)
-// ------------------- صفحة حول التطبيق (بدون تغيير) -------------------
+// ------------------- صفحة حول التطبيق -------------------
 class AboutPage extends StatefulWidget {
   const AboutPage({super.key});
   @override
@@ -610,7 +557,7 @@ class _AboutPageState extends State<AboutPage> with SingleTickerProviderStateMix
   }
 }
 
-// ------------------- صفحة المعلومات والإرشادات (بدون تغيير) -------------------
+// ------------------- صفحة المعلومات والإرشادات -------------------
 class InfoPage extends StatelessWidget {
   const InfoPage({super.key});
 
