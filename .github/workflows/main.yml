@@ -22,13 +22,13 @@ jobs:
     steps:
       # الخطوة 1: جلب الكود من المستودع
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # الخطوة 2: تثبيت Flutter
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable' # يمكنك تغييره إلى 'beta' إذا أردتِ
+          channel: 'stable' 
 
       # الخطوة 3: تثبيت الحزم
       - name: Install dependencies
@@ -37,11 +37,11 @@ jobs:
       # الخطوة 4: بناء نسخة الويب
       - name: Build Flutter Web
         run: flutter build web --release --base-href /melanoma_detector_app/
-        # ملاحظة: استبدلي melanoma_detector_app باسم مستودعك بالضبط
+        # ملاحظة: تأكدي أن melanoma_detector_app هو اسم مستودعك بالضبط
 
       # الخطوة 5: رفع ملفات البناء كـ "قطعة أثرية" (artifact)
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v1
+        uses: actions/upload-pages-artifact@v3
         with:
           path: build/web
 
@@ -60,4 +60,4 @@ jobs:
       # الخطوة 6: نشر القطعة الأثرية التي تم رفعها في الخطوة 5
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v2
+        uses: actions/deploy-pages@v4 # <-- هذا هو التحديث الأخير والمهم
